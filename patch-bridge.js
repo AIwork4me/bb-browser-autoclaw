@@ -1,128 +1,163 @@
 #!/usr/bin/env node
 /**
- * bb-browser AutoClaw Bridge Patcher
- * 
- * 一键修补 bb-browser 的 OpenClaw bridge 文件，适配 AutoClaw 内置环境。
- * 自动备份原文件，幂等执行（多次运行安全）。
- * 
- * 用法: node patch-bridge.js
+ * bb-browser AutoClaw Bridge Patcher v1.0.0
+ *
+ * Patches bb-browser's OpenClaw bridge file to work with AutoClaw's
+ * built-in openclaw (which has full browser control).
+ *
+ * Features:
+ *   - 4 surgical patches (path, prefix, timeouts)
+ *   - Auto-backup of original file
+ *   - Idempotent (safe to run multiple times)
+ *   - Built-in verification after patching
+ *
+ * Usage:
+ *   node patch-bridge.js
+ *
+ * Requirements:
+ *   - bb-browser installed globally (npm install -g bb-browser)
+ *   - AutoClaw installed (includes openclaw with browser support)
+ *   - Windows (AutoClaw paths are Windows-specific)
+ *
+ * License: MIT
  */
 
 const fs = require('fs');
 const path = require('path');
 
-console.log('🔧 bb-browser AutoClaw Bridge Patcher\n');
+const AUTOCLOW_NODE = 'C:\\\\Program Files\\\\AutoClaw\\\\resources\\\\node\\\\node.exe';
+const AUTOCLOW_MJS = 'C:\\\\Program Files\\\\AutoClaw\\\\resources\\\\gateway\\\\openclaw\\\\openclaw.mjs';
 
-// ─── 找到 bridge 文件 ───
+console.log('🔧 bb-browser AutoClaw Bridge Patcher v1.0.0\n');
+
+// ─── Locate bridge file ───────────────────────────────────────────
 const dir = path.join(process.env.APPDATA || '', 'npm', 'node_modules', 'bb-browser', 'dist');
+
 if (!fs.existsSync(dir)) {
-  console.error('❌ bb-browser 未安装。请先运行: npm install -g bb-browser');
+  console.error('❌ bb-browser is not installed.');
+  console.error('   Run: npm install -g bb-browser');
   process.exit(1);
 }
 
 const files = fs.readdirSync(dir).filter(f =>
-  f.startsWith('openclaw-bridge-') && !f.includes('.bak') && !f.includes('.map')
+  f.startsWith('openclaw-bridge-') &&
+  f.endsWith('.js') &&
+  !f.includes('.bak') &&
+  !f.endsWith('.map')
 );
 
 if (files.length === 0) {
-  console.error('❌ 找不到 bridge 文件。请确认 bb-browser 已正确安装。');
+  console.error('❌ Bridge file not found in: ' + dir);
+  console.error('   Ensure bb-browser is correctly installed.');
   process.exit(1);
 }
 
-const file = path.join(dir, files[0]);
-console.log(`📂 Bridge 文件: ${file}`);
-
-// ─── 备份 ───
-const backup = file + '.bak';
-if (!fs.existsSync(backup)) {
-  fs.copyFileSync(file, backup);
-  console.log(`💾 备份已创建: ${backup}`);
-} else {
-  console.log(`💾 备份已存在，跳过`);
+if (files.length > 1) {
+  console.log('⚠️  Multiple bridge files found. Using: ' + files[0]);
 }
 
-// ─── 读取并修补 ───
-let content = fs.readFileSync(file, 'utf8');
+const filePath = path.join(dir, files[0]);
+console.log('📂 Bridge file: ' + filePath);
+
+// ─── Backup ────────────────────────────────────────────────────────
+const backupPath = filePath + '.bak';
+if (!fs.existsSync(backupPath)) {
+  fs.copyFileSync(filePath, backupPath);
+  console.log('💾 Backup created: ' + backupPath);
+} else {
+  console.log('💾 Backup exists, skipping');
+}
+
+// ─── Read & Patch ──────────────────────────────────────────────────
+let content = fs.readFileSync(filePath, 'utf8');
 let patched = 0;
+let warnings = 0;
 
-// Patch 1: execFileSync 调用路径
-const npxPattern = 'return execFileSync("npx", buildOpenClawArgs(args, timeout), {';
-const autoclawPath = 'return execFileSync("C:\\\\Program Files\\\\AutoClaw\\\\resources\\\\node\\\\node.exe", ["C:\\\\Program Files\\\\AutoClaw\\\\resources\\\\gateway\\\\openclaw\\\\openclaw.mjs", ...buildOpenClawArgs(args, timeout)], {';
+// Patch 1: Replace npx with AutoClaw's built-in node + openclaw.mjs
+const NPX_PATTERN = 'return execFileSync("npx", buildOpenClawArgs(args, timeout), {';
+const AUTOCLOW_CALL = `return execFileSync("${AUTOCLOW_NODE}", ["${AUTOCLOW_MJS}", ...buildOpenClawArgs(args, timeout)], {`;
 
-if (content.includes(npxPattern)) {
-  content = content.replace(npxPattern, autoclawPath);
-  console.log('✅ Patch 1: npx -> AutoClaw 内置路径');
+if (content.includes(NPX_PATTERN)) {
+  content = content.replace(NPX_PATTERN, AUTOCLOW_CALL);
+  console.log('✅ Patch 1: npx → AutoClaw built-in path');
   patched++;
-} else if (content.includes(autoclawPath)) {
-  console.log('⏭️  Patch 1: 已应用，跳过');
+} else if (content.includes(AUTOCLOW_NODE)) {
+  console.log('⏭️  Patch 1: Already applied');
 } else {
-  console.log('⚠️  Patch 1: 未找到匹配模式，可能需要手动修改');
-  const match = content.match(/return execFileSync\("[^"]*"[^}]*\{/);
-  if (match) console.log(`   当前代码: ${match[0]}`);
+  console.log('⚠️  Patch 1: Pattern not found');
+  const m = content.match(/return execFileSync\("[^"]*"[^}]*\{/);
+  if (m) console.log('   Current: ' + m[0]);
+  warnings++;
 }
 
-// Patch 2: 去掉 "openclaw" 前缀
-const oldArgs = 'return ["openclaw", "browser", subcommand, "--timeout", String(timeout), ...rest];';
-const newArgs = 'return ["browser", subcommand, "--timeout", String(timeout), ...rest];';
+// Patch 2: Remove "openclaw" subcommand prefix from args
+const OLD_ARGS = 'return ["openclaw", "browser", subcommand, "--timeout", String(timeout), ...rest];';
+const NEW_ARGS = 'return ["browser", subcommand, "--timeout", String(timeout), ...rest];';
 
-if (content.includes(oldArgs)) {
-  content = content.replace(oldArgs, newArgs);
-  console.log('✅ Patch 2: 移除 "openclaw" 前缀');
+if (content.includes(OLD_ARGS)) {
+  content = content.replace(OLD_ARGS, NEW_ARGS);
+  console.log('✅ Patch 2: Removed "openclaw" subcommand prefix');
   patched++;
-} else if (content.includes(newArgs)) {
-  console.log('⏭️  Patch 2: 已应用，跳过');
+} else if (content.includes(NEW_ARGS)) {
+  console.log('⏭️  Patch 2: Already applied');
 } else {
-  console.log('⚠️  Patch 2: 未找到匹配模式');
+  console.log('⚠️  Patch 2: Pattern not found');
+  warnings++;
 }
 
-// Patch 3: tabs 超时 -> 60s
-const tabsPatterns = [
+// Patch 3: Increase tabs timeout (15s or 30s → 60s)
+const TABS_FIXES = [
   ['runOpenClaw(["tabs", "--json"], 15e3)', 'runOpenClaw(["tabs", "--json"], 60e3)'],
   ['runOpenClaw(["tabs", "--json"], 30e3)', 'runOpenClaw(["tabs", "--json"], 60e3)'],
 ];
-let patch3Applied = false;
-for (const [old, rep] of tabsPatterns) {
-  if (content.includes(old)) {
-    content = content.replace(old, rep);
-    console.log(`✅ Patch 3: tabs 超时 -> 60s`);
+let p3 = false;
+for (const [from, to] of TABS_FIXES) {
+  if (content.includes(from)) {
+    content = content.replace(from, to);
+    console.log('✅ Patch 3: tabs timeout → 60s');
     patched++;
-    patch3Applied = true;
+    p3 = true;
     break;
   }
 }
-if (!patch3Applied && content.includes('runOpenClaw(["tabs", "--json"], 60e3)')) {
-  console.log('⏭️  Patch 3: 已应用，跳过');
-} else if (!patch3Applied) {
-  console.log('⚠️  Patch 3: 未找到匹配模式');
+if (!p3) {
+  if (content.includes('runOpenClaw(["tabs", "--json"], 60e3)')) {
+    console.log('⏭️  Patch 3: Already applied');
+  } else {
+    console.log('⚠️  Patch 3: Pattern not found');
+    warnings++;
+  }
 }
 
-// Patch 4: evaluate 超时 -> 180s
-const oldEval = 'var OPENCLAW_EVALUATE_TIMEOUT_MS = 12e4;';
-const newEval = 'var OPENCLAW_EVALUATE_TIMEOUT_MS = 18e4;';
+// Patch 4: Increase evaluate timeout (120s → 180s)
+const OLD_EVAL = 'var OPENCLAW_EVALUATE_TIMEOUT_MS = 12e4;';
+const NEW_EVAL = 'var OPENCLAW_EVALUATE_TIMEOUT_MS = 18e4;';
 
-if (content.includes(oldEval)) {
-  content = content.replace(oldEval, newEval);
-  console.log('✅ Patch 4: evaluate 超时 -> 180s');
+if (content.includes(OLD_EVAL)) {
+  content = content.replace(OLD_EVAL, NEW_EVAL);
+  console.log('✅ Patch 4: evaluate timeout → 180s');
   patched++;
-} else if (content.includes(newEval)) {
-  console.log('⏭️  Patch 4: 已应用，跳过');
+} else if (content.includes(NEW_EVAL)) {
+  console.log('⏭️  Patch 4: Already applied');
 } else {
-  console.log('⚠️  Patch 4: 未找到匹配模式');
+  console.log('⚠️  Patch 4: Pattern not found');
+  warnings++;
 }
 
-// ─── 写入 ───
-fs.writeFileSync(file, content);
-console.log(`\n📝 ${patched > 0 ? `已应用 ${patched} 个补丁` : '无需修改'}: ${file}`);
+// ─── Write ─────────────────────────────────────────────────────────
+fs.writeFileSync(filePath, content);
+console.log(`\n📝 ${patched > 0 ? patched + ' patch(es) applied' : 'No changes needed'}: ${filePath}`);
 
-// ─── 验证 ───
-console.log('\n🔍 验证修补结果...');
-const verify = fs.readFileSync(file, 'utf8');
+// ─── Verify ────────────────────────────────────────────────────────
+console.log('\n🔍 Verifying patches...');
+const verify = fs.readFileSync(filePath, 'utf8');
+
 const checks = [
-  ['AutoClaw 路径', verify.includes('AutoClaw')],
-  ['无 npx 调用', !verify.includes('execFileSync("npx"')],
-  ['无 openclaw 前缀', !verify.includes('"openclaw", "browser"')],
-  ['tabs 60s 超时', verify.includes('60e3)') || !verify.includes('15e3)')],
-  ['evaluate 180s 超时', verify.includes('18e4')],
+  ['AutoClaw path present',     verify.includes('AutoClaw')],
+  ['No npx calls',              !verify.includes('execFileSync("npx"')],
+  ['No openclaw prefix',        !verify.includes('"openclaw", "browser"')],
+  ['tabs timeout ≥ 60s',       !verify.includes('15e3)') && !verify.includes('30e3)')],
+  ['evaluate timeout 180s',     verify.includes('18e4')],
 ];
 
 let allOk = true;
@@ -132,14 +167,16 @@ for (const [name, ok] of checks) {
 }
 
 if (allOk) {
-  console.log('\n🎉 所有修补验证通过！');
-  console.log('\n下一步:');
+  console.log('\n🎉 All patches verified!');
+  console.log('\nNext steps:');
   console.log('  1. openclaw browser start');
   console.log('  2. openclaw browser open https://x.com');
-  console.log('  3. 手动登录 Twitter');
+  console.log('  3. Log into Twitter in the browser');
   console.log('  4. bb-browser site twitter/tweets elonmusk --count 3 --openclaw --json');
+  process.exit(0);
 } else {
-  console.log('\n⚠️  部分修补未成功，请检查上方标记 ❌ 的项目。');
-  console.log('可能需要手动修改 bridge 文件。');
+  console.log('\n⚠️  Some patches failed verification. Check the ❌ items above.');
+  console.log('You may need to manually edit: ' + filePath);
+  console.log('Original backup: ' + backupPath);
   process.exit(1);
 }
