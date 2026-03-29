@@ -11,7 +11,7 @@
 
 **One patch → Your browser becomes the ultimate scraping API**
 
-[English](#quick-start) · [中文文档](#中文说明) · [Setup Guide](SETUP.md) · [Auto-Patcher](patch-bridge.js)
+[Quick Start](#-quick-start) · [中文文档](README_zh-CN.md) · [Setup Guide](SETUP.md) · [Auto-Patcher](patch-bridge.js)
 
 </div>
 
@@ -40,7 +40,7 @@ $ bb-browser site twitter/tweets elonmusk --count 3 --openclaw --json
   "count": 3,
   "tweets": [
     {
-      "id": "2038280385835307008",
+      "id": "2038138194861166638",
       "type": "tweet",
       "author": "elonmusk",
       "text": "Tesla FSD",
@@ -59,10 +59,10 @@ $ bb-browser site twitter/tweets elonmusk --count 3 --openclaw --json
       "created_at": "Sun Mar 29 06:25:53 +0000 2026"
     },
     {
-      "id": "2038138194861166638",
+      "id": "2038280385835307008",
       "type": "tweet",
       "author": "elonmusk",
-      "text": "SpaceX Falcon 9 family has now launched 636 times...",
+      "text": "SpaceX Falcon 9 family has now launched 636 times and counting...",
       "likes": 2167,
       "retweets": 456,
       "created_at": "Sun Mar 29 18:36:52 +0000 2026"
@@ -120,8 +120,8 @@ The auto-patcher ([patch-bridge.js](patch-bridge.js)) makes 4 surgical changes t
 | **Twitter/X** | `twitter/tweets` | ✅ Verified | GraphQL API + cookie auth |
 | **Twitter/X** | `twitter/search` | ✅ Verified | Search API + cookie auth |
 | Reddit | `reddit/hot` | ✅ Verified | Cookie-based fetch |
-| 微博 | `weibo/hot` | ✅ Verified | Cookie-based fetch |
-| 知乎 | `zhihu/hot` | ✅ Needs login | Cookie-based fetch |
+| 微博 Weibo | `weibo/hot` | ✅ Verified | Cookie-based fetch |
+| 知乎 Zhihu | `zhihu/hot` | ✅ Needs login | Cookie-based fetch |
 | Bilibili | `bilibili/popular` | ✅ Verified | Cookie-based fetch |
 | HackerNews | `hackernews/top` | ⚠️ CORS blocked | Firebase API blocked in browser context |
 
@@ -161,39 +161,15 @@ Copy the entire content of [SETUP.md](SETUP.md) and paste it to your AutoClaw AI
 4. Wait for your manual login
 5. Verify by scraping tweets
 
-## 中文说明
+## Contributing
 
-### 解决什么问题
+See [CONTRIBUTING.md](CONTRIBUTING.md) for bug reports, feature requests, and pull requests.
 
-[bb-browser](https://github.com/epiral/bb-browser) 可以把 36+ 个网站变成 CLI 命令，用浏览器登录态直接抓数据，不需要 API Key。但它默认调用 `npx openclaw`，这个版本不支持浏览器控制。AutoClaw 内置的 `openclaw` 才有完整的浏览器支持。
-
-**本仓库提供一个一键补丁脚本**，让 bb-browser 正确调用 AutoClaw 的浏览器能力。
-
-### 三步抓取 x.com 推文
-
-```bash
-# 1. 安装 + 补丁
-npm install -g bb-browser && bb-browser site update
-node patch-bridge.js
-
-# 2. 打开浏览器登录 Twitter
-openclaw browser start
-openclaw browser open https://x.com
-# → 在浏览器中手动登录
-
-# 3. 抓取推文
-bb-browser site twitter/tweets elonmusk --count 5 --openclaw --json
-```
-
-### 给 AutoClaw AI 的提示词
-
-把 [SETUP.md](SETUP.md) 的全部内容复制给你的 AutoClaw AI，它会自动完成安装、补丁、登录、验证全流程。
-
-## 📄 License
+## License
 
 [MIT](LICENSE) — Use it however you want.
 
-## 🔗 Related
+## Related
 
 - [bb-browser](https://github.com/epiral/bb-browser) — The core tool that makes websites into CLI commands
 - [AutoClaw](https://github.com/nicepkg/openclaw) — AI agent framework with built-in browser control
